@@ -1871,23 +1871,22 @@ test.describe('remote functions', () => {
 
 		await page.goto('/remote/form/validate');
 
+		const myForm = page.locator('form#my-form');
 		const foo = page.locator('input[name="foo"]');
 		const bar = page.locator('input[name="bar"]');
 		const submit = page.locator('button:has-text("imperative validation")');
 
 		await foo.fill('a');
-		await expect(page.locator('form')).not.toContainText('Invalid type: Expected');
+		await expect(myForm).not.toContainText('Invalid type: Expected');
 
 		await bar.fill('g');
-		await expect(page.locator('form')).toContainText(
-			'Invalid type: Expected ("d" | "e") but received "g"'
-		);
+		await expect(myForm).toContainText('Invalid type: Expected ("d" | "e") but received "g"');
 
 		await bar.fill('d');
-		await expect(page.locator('form')).not.toContainText('Invalid type: Expected');
+		await expect(myForm).not.toContainText('Invalid type: Expected');
 
 		await page.locator('#trigger-validate').click();
-		await expect(page.locator('form')).toContainText(
+		await expect(myForm).toContainText(
 			'Invalid type: Expected "submitter" but received "incorrect_value"'
 		);
 
@@ -1895,7 +1894,42 @@ test.describe('remote functions', () => {
 		await foo.fill('c');
 		await bar.fill('d');
 		await submit.click();
-		await expect(page.locator('form')).toContainText('Imperative: foo cannot be c');
+		await expect(myForm).toContainText('Imperative: foo cannot be c');
+
+		const nestedValue = page.locator('input[name="nested.value"]');
+		const validate = page.locator('button#validate');
+		const allIssues = page.locator('#allIssues');
+
+		await nestedValue.fill('in');
+		await validate.click();
+		await expect(allIssues).toContainText('"path":["nested","value"]');
+	});
+
+	test('form validation issues cleared', async ({ page, javaScriptEnabled }) => {
+		if (!javaScriptEnabled) return;
+
+		await page.goto('/remote/form/validate');
+
+		const baz = page.locator('input[name="baz"]');
+		const submit = page.locator('#my-form-2 button');
+
+		await baz.fill('c');
+		await submit.click();
+		await expect(page.locator('#my-form-2')).toContainText('Invalid type: Expected');
+
+		await baz.fill('a');
+		await submit.click();
+		await expect(page.locator('#my-form-2')).not.toContainText('Invalid type: Expected');
+		await expect(page.locator('[data-error]')).toHaveText('An error occurred');
+
+		await baz.fill('c');
+		await submit.click();
+		await expect(page.locator('#my-form-2')).toContainText('Invalid type: Expected');
+
+		await baz.fill('b');
+		await submit.click();
+		await expect(page.locator('#my-form-2')).not.toContainText('Invalid type: Expected');
+		await expect(page.locator('[data-error]')).toHaveText('No error');
 	});
 
 	test('form inputs excludes underscore-prefixed fields', async ({ page, javaScriptEnabled }) => {
@@ -2017,6 +2051,53 @@ test.describe('remote functions', () => {
 
 		await page.fill('input', 'hello');
 		await expect(page.locator('select')).toHaveValue('one');
+	});
+	test('file uploads work', async ({ page }) => {
+		await page.goto('/remote/form/file-upload');
+
+		await page.locator('input[name="file1"]').setInputFiles({
+			name: 'a.txt',
+			mimeType: 'text/plain',
+			buffer: Buffer.from('a')
+		});
+		await page.locator('input[name="file2"]').setInputFiles({
+			name: 'b.txt',
+			mimeType: 'text/plain',
+			buffer: Buffer.from('b')
+		});
+		await page.locator('input[type="checkbox"]').check();
+		await page.locator('button').click();
+
+		await expect(page.locator('pre')).toHaveText(
+			JSON.stringify({
+				text: 'Hello world',
+				file1: 'a',
+				file2: 'b'
+			})
+		);
+	});
+	test('large file uploads work', async ({ page }) => {
+		await page.goto('/remote/form/file-upload');
+
+		await page.locator('input[name="file1"]').setInputFiles({
+			name: 'a.txt',
+			mimeType: 'text/plain',
+			buffer: Buffer.alloc(1024 * 1024 * 10)
+		});
+		await page.locator('input[name="file2"]').setInputFiles({
+			name: 'b.txt',
+			mimeType: 'text/plain',
+			buffer: Buffer.from('b')
+		});
+		await page.locator('button').click();
+
+		await expect(page.locator('pre')).toHaveText(
+			JSON.stringify({
+				text: 'Hello world',
+				file1: 1024 * 1024 * 10,
+				file2: 1
+			})
+		);
 	});
 });
 
